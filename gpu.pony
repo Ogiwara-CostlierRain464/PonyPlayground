@@ -12,10 +12,10 @@ class Config
         var options = Options(env.args)
 
         options
-            .add("logtable", "l", None)
-            .add("iterate", "i", None)
-            .add("chunk", "c", None)
-            .add("actors", "a", None)
+            .add("table", "l", I64Argument)
+            .add("iterate", "i", I64Argument)
+            .add("chunk", "c", I64Argument)
+            .add("actors", "a", I64Argument)
 
         for option in options do
             match option
@@ -27,7 +27,7 @@ class Config
                 env.out.print(
                     """
                     gups_out [OPTIONS]
-                    ???
+                    -- table N log2 of the totaoe 
                     """
                 )
                 return false
@@ -64,19 +64,18 @@ actor Main
             _updates = chunk_iterate * actor_count
             _confirm = actor_count
 
-            var updaters = recover Array[Updater](actor_count) end
+            var updaters = recover Array[Updater](actor_count.usize()) end
 
-            for i in Range[USize](0, actor_count) do
+            for i in Range[U64](0, actor_count) do
                 updaters.push(Updater(this, actor_count, i, loglocal, chunk_size, chunk_iterate * i))
             end
 
             _actors = consume updaters
             _start = Time.nanos()
 
-            try
-                for a in _actors.values() do
-                    a.start(_actors, _config.iterate)
-                end
+            
+            for a in _actors.values() do
+                a.start(_actors, _config.iterate)
             end
         else
             _start = 0
@@ -85,17 +84,15 @@ actor Main
 
     be done() =>
         if (_confirm = _confirm - 1) == 1 then
-            try 
-                for a in _actors.values() do
-                    a.done()
-                end
+            for a in _actors.values() do
+                a.done()
             end
         end
 
     be confirm() =>
         _confirm = _confirm + 1
 
-        if _confirm == _actors.size() then
+        if _confirm == _actors.size().u64() then
             let elapsed = (Time.nanos() - _start).f64()
             let gups = _updates.f64() / elapsed
 
@@ -128,16 +125,17 @@ actor Updater
         _loglocal = loglocal
 
         _rand = PolyRand.seed(seed)
-        _output = _output.create(updaters)
+        _output = _output.create(updaters.usize())
 
         let size = 1 << loglocal
-        _table = Array[U64].undefined(size)
+        _table = Array[U64]
+        _table.undefined(size.usize())
 
         var offset = index * size
 
         try 
             for i in Range[U64](0, size) do
-                _table(i) = i + offset
+                _table(i.usize())? = i + offset
             end
         end 
 
@@ -151,25 +149,25 @@ actor Updater
     fun ref iteration(iterate: U64) =>
         let chk = _chunk
 
-        for i in Range(0, _updaters) do
+        for i in Range(0, _updaters.usize()) do
             _output.push(
                 try 
-                    _reuse.pop()
+                    _reuse.pop()?
                 else
-                    recover Array[U64](chk) end
+                    recover Array[U64](chk.usize()) end
                 end
             )
         end        
 
-        for i in Range(0 , _chunk) do
+        for i in Range(0 , _chunk.usize()) do
             var datum = _rand = PolyRand(_rand)
             var updater = (datum >> _loglocal) and _mask
 
             try
                 if updater == _index then
-                    _table(i) = _table(i) xor datum
+                    _table(i)? = _table(i)? xor datum
                 else
-                    _output(updater).push(datum)
+                    _output(updater.usize())?.push(datum)
                 end
             end
         end    
@@ -178,10 +176,10 @@ actor Updater
             let to = _others as Array[Updater] val
 
             repeat
-                let data = _output.pop()
+                let data = _output.pop()?
 
                 if data.size() > 0 then
-                    to(_output.size()).receive(consume data)
+                    to(_output.size())?.receive(consume data)
                 else
                     _reuse.push(consume data)
                 end
@@ -197,9 +195,9 @@ actor Updater
     be receive(data: Array[U64] iso) =>
         try
             for i in Range(0, data.size()) do
-                let datum = data(i)
+                let datum = data(i)?
                 var j = (datum >> _loglocal) and _mask
-                _table(j) = _table(j) xor datum 
+                _table(j.usize())? = _table(j.usize())? xor datum 
             end
 
             data.clear()
@@ -220,12 +218,13 @@ primitive PolyRand
             return 1
         end
 
-        var m2 = Array[U64].undefined(64)
+        var m2 = Array[U64]
+        m2.undefined(64)
         var temp = U64(1)
 
         try
             for i in Range(0 ,64) do
-                m2(i) = temp
+                m2(i)? = temp
                 temp = this(temp)
                 temp = this(temp)
             end
@@ -239,8 +238,8 @@ primitive PolyRand
                 temp = 0
 
                 for j in Range(0, 64) do
-                    if ((r >> j) and 1) != 0 then
-                        temp = temp xor m2(j)
+                    if ((r >> j.u64()) and 1) != 0 then
+                        temp = temp xor m2(j)?
                     end
                 end
 
