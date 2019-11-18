@@ -17,7 +17,7 @@ class Config
             .add("chunk", "c", I64Argument)
             .add("actors", "a", I64Argument)
 
-        for option in options do
+        for option in options do 
             match option
             | ("table", let arg: I64) => logtable = arg.u64()
             | ("iterate", let arg: I64) => iterate = arg.u64()
@@ -27,7 +27,14 @@ class Config
                 env.out.print(
                     """
                     gups_out [OPTIONS]
-                    -- table N log2 of the totaoe 
+                    -- table N log2 of the total table size.
+                        Defaults to 20
+                    -- iterate N number of iterations. 
+                        Defaults to 10000.
+                    -- chunk N log2 of the chunk size.
+                        Defaults to 10.
+                    -- actors N log2 of the actor count.
+                        Defaults to 2.            
                     """
                 )
                 return false
