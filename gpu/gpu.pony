@@ -51,6 +51,10 @@ class Config
 
 
 actor Main
+    """
+    Example ./gpu --table 20 --iterate 2 --chunk 10 --actors 1
+    """
+
     let _env: Env
     let _config: Config = Config
 
@@ -109,6 +113,9 @@ actor Main
             )
         end
 
+    be debug(msg: String val) =>
+        _env.out.print(msg)    
+
 actor Updater
     let _main: Main
     let _index: U64
@@ -135,8 +142,7 @@ actor Updater
         _output = _output.create(updaters.usize())
 
         let size = 1 << loglocal
-        _table = Array[U64]
-        _table.undefined(size.usize())
+        _table = Array[U64](size.usize())
 
         var offset = index * size
 
@@ -146,6 +152,8 @@ actor Updater
             end
         end 
 
+        _main.debug("Actor: " + _index.string())
+
     be start(others: Array[Updater] val, iterate: U64) =>
         _others = others
         iteration(iterate)
@@ -154,6 +162,8 @@ actor Updater
         iteration(iterate)
 
     fun ref iteration(iterate: U64) =>
+        _main.debug("Actor " + _index.string() + " With iterate " +  iterate.string())
+
         let chk = _chunk
 
         for i in Range(0, _updaters.usize()) do
@@ -166,6 +176,7 @@ actor Updater
             )
         end        
 
+        // チャンクサイズだけ乱数を生成し、条件に合わなかったものをoutputに入れる
         for i in Range(0 , _chunk.usize()) do
             var datum = _rand = PolyRand(_rand)
             var updater = (datum >> _loglocal) and _mask
@@ -179,6 +190,7 @@ actor Updater
             end
         end    
 
+        // dataが空になるまで
         try
             let to = _others as Array[Updater] val
 
@@ -186,7 +198,7 @@ actor Updater
                 let data = _output.pop()?
 
                 if data.size() > 0 then
-                    to(_output.size())?.receive(consume data)
+                    to(_output.size())?.receive(consume data, _index)
                 else
                     _reuse.push(consume data)
                 end
@@ -199,7 +211,9 @@ actor Updater
             _main.done()
         end 
 
-    be receive(data: Array[U64] iso) =>
+    be receive(data: Array[U64] iso, from: U64 val) =>
+        _main.debug("Actor " + _index.string() + "received " + data.size().string() + "from " + from.string() )
+
         try
             for i in Range(0, data.size()) do
                 let datum = data(i)?
@@ -219,14 +233,16 @@ primitive PolyRand
         (prev << 1) xor if prev.i64() < 0 then _poly() else 0 end        
 
     fun seed(from: U64): U64 =>
+        """
+        Makes random number.
+        """
         var n = from % _period()
 
         if n == 0 then
             return 1
         end
 
-        var m2 = Array[U64]
-        m2.undefined(64)
+        var m2 = Array[U64](64)
         var temp = U64(1)
 
         try
